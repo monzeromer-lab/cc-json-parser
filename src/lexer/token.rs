@@ -10,6 +10,7 @@ pub enum Kind {
     RightBraceKind,
     CommaKind,
     ColonKind,
+    EOFKind,
 }
 
 pub struct TokenKind {
