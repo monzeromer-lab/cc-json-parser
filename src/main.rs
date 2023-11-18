@@ -1,7 +1,9 @@
 mod lexer;
 mod parser;
-mod helpers;
-mod structs;
+mod data_structures;
+mod utils;
+
+mod test;
 
 use std::fs;
 

@@ -1,4 +1,4 @@
-use crate::structs::token::Token;
+use crate::lexer::token::Token;
 
 pub struct Position {
     line: usize,

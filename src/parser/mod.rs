@@ -1,7 +1,2 @@
-use crate::{structs::token::Token, lexer::Lexer};
-
-pub struct Parser {
-    lexer: Lexer,
-    tokens: Vec<Token>,
-}
-
+pub mod parser;
+pub mod ast;
