@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Kind {
     IdentifierKind,
     IntegerKind,
@@ -12,10 +12,11 @@ pub enum Kind {
     RightBraceKind,
     CommaKind,
     ColonKind,
+    SOFKind,
     EOFKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Token {
     pub kind: Kind,
     pub value: String,
