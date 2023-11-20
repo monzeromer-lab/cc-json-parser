@@ -1,8 +1,10 @@
+#[derive(Debug)]
 pub enum Kind {
     IdentifierKind,
     IntegerKind,
     FloatKind,
     StringKind,
+    NullKind,
     BooleanKind,
     WhiteSpaceKind,
     NewLineKind,
@@ -13,14 +15,10 @@ pub enum Kind {
     EOFKind,
 }
 
-pub struct TokenKind {
-    pub kind: Kind,
-    pub literal: String,
-}
-
+#[derive(Debug)]
 pub struct Token {
-    pub kind: TokenKind,
-    pub lexeme: String,
+    pub kind: Kind,
+    pub value: String,
     pub line: usize,
     pub column: usize,
 }

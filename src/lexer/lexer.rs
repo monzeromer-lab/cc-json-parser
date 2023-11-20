@@ -1,6 +1,5 @@
+use super::token::Kind;
 use crate::lexer::token::Token;
-
-use super::token::TokenKind;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Position {
@@ -16,77 +15,233 @@ pub enum LexerError {
 
 pub struct Lexer {
     input: String,
-    position: Position,
-    current_token: Token,
+    pub position: Position,
+    pub tokens: Vec<Token>,
+    pub current_token: Token,
 }
 
 impl Lexer {
-    pub fn new(input: String) -> Self {
-        let position = Position { line: 1, column: 1 };
-        let current_token = Token::EOF; // Assuming you have an EOF token in your Token enum
-        Lexer {
+    pub fn new(input: String) -> Lexer {
+        let mut lexer = Lexer {
             input,
-            position,
-            current_token,
+            position: Position { line: 1, column: 1 },
+            tokens: Vec::new(),
+            current_token: Token {
+                kind: Kind::EOFKind,
+                value: "".to_string(),
+                line: 1,
+                column: 1,
+            },
+        };
+        lexer.tokenize();
+        lexer
+    }
+
+    pub fn set_input(&mut self, json_file_text: String) {
+        self.input = json_file_text;
+    }
+
+    pub fn tokenize(&mut self) {
+        while !self.is_at_end() {
+            self.position = self.position;
+            self.scan_token();
+        }
+        self.add_token(Kind::EOFKind, "".to_string());
+    }
+
+    fn scan_token(&mut self) {
+        let c = self.advance();
+        match c {
+            '{' => self.add_token(Kind::LeftBraceKind, "{".to_string()),
+            '}' => self.add_token(Kind::RightBraceKind, "}".to_string()),
+            ',' => self.add_token(Kind::CommaKind, ",".to_string()),
+            ':' => self.add_token(Kind::ColonKind, ":".to_string()),
+            ' ' | '\t' | '\r' => self.scan_whitespace(),
+        '\n' => self.advance_line(),
+            '"' => self.scan_string(),
+            '0'..='9' => self.scan_number(),
+            't' | 'f' => self.scan_boolean(),
+            'n' => self.scan_null(),
+            _ => self.error(format!("Unexpected character: {}", c)),
         }
     }
 
-    pub fn next_token(&mut self) -> Result<Token, LexerError> {
-        // Implement the logic to generate the next token from the input
-        // You can update the position as you read characters
-        // Update the current_token field accordingly
-        // Return Ok(Token) when a valid token is found, or Err(LexerError) for errors
+    fn scan_string(&mut self) {
+        let mut value = String::new();
+        let start_pos = self.position;
+    
+        while let Some(c) = self.peek() {
+            self.advance();
+            match c {
+                '"' => {
+                    // End of the string
+                    self.add_token(Kind::StringKind, value);
+                    return;
+                }
+                '\\' => {
+                    // Handle escape characters
+                    if let Some(escaped_char) = self.peek() {
+                        match escaped_char {
+                            '"' | '\\' | '/' => value.push(escaped_char),
+                            'b' => value.push('\u{0008}'), // Backspace
+                            'f' => value.push('\u{000C}'), // Form feed
+                            'n' => value.push('\n'),       // Newline
+                            'r' => value.push('\r'),       // Carriage return
+                            't' => value.push('\t'),       // Tab
+                            'u' => {
+                                // Handle Unicode escape sequence (e.g., \uFFFF)
+                                // You need to implement the specific logic here
+                                // and update the `value` accordingly.
+                                // For simplicity, let's assume we append 'u' for now.
+                                value.push('u');
+                            }
+                            _ => {
+                                // Invalid escape sequence
+                                self.error("Invalid escape sequence in string".to_owned());
+                            }
+                        }
+                    } else {
+                        // Unexpected end of input after '\'
+                        self.error("Unexpected end of input after '\\' in string".to_owned());
+                        return;
+                    }
+                }
+                _ => {
+                    // Regular character, add to the value
+                    value.push(c);
+                }
+            }
+        }
+    
+        self.error_at_current("Unterminated string");
+    }
+    
 
-        // Placeholder logic, replace with actual implementation
-        if let Some(ch) = self.input.chars().next() {
-            // Implement your tokenization logic here
-            let token = match ch {
-                // Handle different character cases
-                _ => return Err(LexerError::UnexpectedCharacter(ch)),
-            };
-            // Update position and consume the character
-            self.position.column += 1;
-            self.input = self.input[1..].to_string();
-            Ok(token)
+    fn scan_whitespace(&mut self) {
+        let mut value = String::new();
+        let start_pos = self.position;
+    
+        while let Some(c) = self.peek() {
+            if c == ' ' || c == '\t' || c == '\r' {
+                value.push(c);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    
+        self.add_token(Kind::WhiteSpaceKind, value);
+    }
+
+    
+
+    fn scan_number(&mut self) {
+        let mut value = String::new();
+        let start_pos = self.position;
+    
+        while let Some(c) = self.peek() {
+            if c.is_digit(10) || c == '.' {
+                value.push(c);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    
+        if let Ok(parsed_value) = value.parse::<f64>() {
+            self.add_token(Kind::FloatKind, value);
         } else {
-            Ok(TokenKind::EOFKind) // Placeholder for end of input, replace with actual logic
+            self.error_at(start_pos, &format!("Invalid number: {}", value));
         }
     }
+    
+    fn scan_boolean(&mut self) {
+        let mut value = String::new();
+        let start_pos = self.position;
+    
+        while let Some(c) = self.peek() {
+            if c.is_alphabetic() {
+                value.push(c);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    
+        match value.as_str() {
+            "true" => self.add_token(Kind::BooleanKind, "true".to_string()),
+            "false" => self.add_token(Kind::BooleanKind, "false".to_string()),
+            _ => self.error_at(start_pos, &format!("Invalid boolean: {}", value)),
+        }
+    }
+    
+    fn scan_null(&mut self) {
+        let mut value = String::new();
+        let start_pos = self.position;
+    
+        while let Some(c) = self.peek() {
+            if c.is_alphabetic() {
+                value.push(c);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    
+        if value == "null" {
+            self.add_token(Kind::NullKind, "null".to_string());
+        } else {
+            self.error_at(start_pos, &format!("Invalid null: {}", value));
+        }
+    }
+    
+    fn peek(&mut self) -> Option<char> {
+        self.input.chars().nth(self.position.column - 1)
+    }
+    
+    fn advance_column(&mut self) {
+        self.position.column += 1;
+    }
+    
+    fn error_at(&self, position: Position, message: &str) {
+        eprintln!("Error at {}:{} - {}", position.line, position.column, message);
+    }
+    
 
-    pub fn position(&self) -> &Position {
-        &self.position
+    fn advance_line(&mut self) {
+        self.position.line += 1;
+        self.position.column = 1;
     }
 
-    pub fn set_position(&mut self, position: Position) {
-        self.position = position;
+    fn is_at_end(&self) -> bool {
+        self.position.column > self.input.len() + 1
+    }
+    
+
+    fn advance(&mut self) -> char {
+        let c = self.input.chars().nth(self.position.column - 1).unwrap();
+        self.position.column += 1;
+        c
+    }
+    
+
+    fn add_token(&mut self, kind: Kind, value: String) {
+        let token = Token {
+            kind,
+            value,
+            line: self.position.line.clone(),
+            column: self.position.column.clone(),
+        };
+        self.tokens.push(token);
     }
 
-    pub fn set_input(&mut self, input: String) {
-        self.input = input;
-    }
-
-    pub fn peek(&self) -> Option<&Token> {
-        Some(&self.current_token)
-    }
-
-    pub fn advance(&mut self) -> Result<Token, LexerError> {
-        let token = self.next_token()?;
-        self.current_token = token;
-        Ok(token)
-    }
-
-    pub fn error(&self, message: &str) {
+    fn error(&self, message: String) {
         eprintln!("Error: {}", message);
     }
 
-    pub fn error_at(&self, message: &str, position: Position) {
-        eprintln!("Error at {}:{} - {}", position.line, position.column, message);
-    }
-
     pub fn error_at_current(&self, message: &str) {
-        let position = self.position();
-        eprintln!("Error at {}:{} - {}", position.line, position.column, message);
+        let position = self.position;
+        self.error_at(position, message);
     }
 }
 
-// Additional functions and implementations can be added as needed
